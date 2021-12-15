@@ -23,6 +23,9 @@ import (
 	"github.com/IBM-Cloud/bluemix-go/api/icd/icdv4"
 	"github.com/IBM-Cloud/bluemix-go/bmxerror"
 	"github.com/IBM-Cloud/bluemix-go/models"
+
+	"github.com/IBM/cloud-databases-go-sdk/clouddatabasesv5"
+	"github.com/IBM/go-sdk-core/v5/core"
 )
 
 const (
@@ -335,6 +338,12 @@ func resourceIBMDatabaseInstance() *schema.Resource {
 							Optional:     true,
 							Sensitive:    true,
 							ValidateFunc: validation.StringLenBetween(10, 32),
+						},
+						"user_type": {
+							Description: "User type",
+							Type:        schema.TypeString,
+							Required:    true,
+							Sensitive:   false,
 						},
 					},
 				},
@@ -1251,23 +1260,40 @@ func resourceIBMDatabaseInstanceCreate(d *schema.ResourceData, meta interface{})
 
 	}
 
-	if userlist, ok := d.GetOk("users"); ok {
-		users := expandUsers(userlist.(*schema.Set))
-		for _, user := range users {
-			userReq := icdv4.UserReq{
-				User: icdv4.User{
-					UserName: user.UserName,
-					Password: user.Password,
-				},
+	if userList, ok := d.GetOk("users"); ok {
+		cloudDatabasesV5, err := meta.(ClientSession).CloudDatabasesAPI()
+
+		if err != nil {
+			return fmt.Errorf("[ERROR] Error getting database client settings: %s", err)
+		}
+
+		for _, user := range userList.(*schema.Set).List() {
+			userEl := user.(map[string]interface{})
+			createDatabaseUserRequestUserModel := &clouddatabasesv5.CreateDatabaseUserRequestUser{
+				Username: core.StringPtr(userEl["name"].(string)),
+				Password: core.StringPtr(userEl["password"].(string)),
 			}
-			task, err := icdClient.Users().CreateUser(icdId, userReq)
+
+			instanceId := d.Id()
+			createDatabaseUserOptions := &clouddatabasesv5.CreateDatabaseUserOptions{
+				ID:       &instanceId,
+				UserType: core.StringPtr(userEl["user_type"].(string)),
+				User:     createDatabaseUserRequestUserModel,
+			}
+
+			fmt.Printf("User: %v", createDatabaseUserOptions)
+			createDatabaseUserResponse, response, err := cloudDatabasesV5.CreateDatabaseUser(createDatabaseUserOptions)
+
 			if err != nil {
-				return fmt.Errorf("[ERROR] Error updating database user (%s) entry: %s", user.UserName, err)
+				return fmt.Errorf("[ERROR] Error creating database user (%s) entry: %s %v", userEl["name"], err, response)
 			}
-			_, err = waitForDatabaseTaskComplete(task.Id, d, meta, d.Timeout(schema.TimeoutCreate))
+
+			taskID := *createDatabaseUserResponse.Task.ID
+
+			_, err = waitForDatabaseTaskComplete(taskID, d, meta, d.Timeout(schema.TimeoutCreate))
 			if err != nil {
 				return fmt.Errorf(
-					"[ERROR] Error waiting for update of database (%s) user (%s) create task to complete: %s", icdId, user.UserName, err)
+					"[ERROR] Error waiting for update of database (%s) user (%s) create task to complete: %s", d.Id(), userEl["name"], err)
 			}
 		}
 	}

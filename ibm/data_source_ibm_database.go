@@ -117,6 +117,12 @@ func dataSourceIBMDatabaseInstance() *schema.Resource {
 							Computed:    true,
 							Sensitive:   true,
 						},
+						"user_type": {
+							Description: "User type",
+							Type:        schema.TypeString,
+							Required:    true,
+							Sensitive:   false,
+						},
 					},
 				},
 			},

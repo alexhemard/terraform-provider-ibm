@@ -9,11 +9,12 @@ require (
 	github.com/IBM/apigateway-go-sdk v0.0.0-20210714141226-a5d5d49caaca
 	github.com/IBM/appconfiguration-go-admin-sdk v0.1.0
 	github.com/IBM/appid-management-go-sdk v0.0.0-20210908164609-dd0e0eaf732f
+	github.com/IBM/cloud-databases-go-sdk v0.1.0
 	github.com/IBM/cloudant-go-sdk v0.0.36
 	github.com/IBM/container-registry-go-sdk v0.0.15
 	github.com/IBM/event-notifications-go-admin-sdk v0.0.2
 	github.com/IBM/eventstreams-go-sdk v1.2.0
-	github.com/IBM/go-sdk-core/v5 v5.8.2
+	github.com/IBM/go-sdk-core/v5 v5.9.0
 	github.com/IBM/ibm-cos-sdk-go v1.8.0
 	github.com/IBM/ibm-cos-sdk-go-config v1.2.0
 	github.com/IBM/ibm-hpcs-tke-sdk v0.0.0-20211109141421-a4b61b05f7d1
@@ -49,8 +50,8 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/softlayer/softlayer-go v1.0.3
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97
-	golang.org/x/sys v0.0.0-20211004093028-2c5d950f24ef // indirect
-	golang.org/x/tools v0.1.7 // indirect
+	golang.org/x/sys v0.0.0-20211205182925-97ca703d548d // indirect
+	golang.org/x/tools v0.1.8 // indirect
 	google.golang.org/api v0.34.0 // indirect
 	gotest.tools v2.2.0+incompatible
 )
