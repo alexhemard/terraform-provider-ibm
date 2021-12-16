@@ -1762,7 +1762,7 @@ func resourceIBMDatabaseInstanceUpdate(d *schema.ResourceData, meta interface{})
 				}
 
 				createDatabaseUserOptions := &clouddatabasesv5.CreateDatabaseUserOptions{
-					ID:       &icdId,
+					ID:       &instanceID,
 					UserType: core.StringPtr(newEntry["user_type"].(string)),
 					User:     userEntry,
 				}
@@ -1777,7 +1777,7 @@ func resourceIBMDatabaseInstanceUpdate(d *schema.ResourceData, meta interface{})
 					}
 
 					changeUserPasswordOptions := &clouddatabasesv5.ChangeUserPasswordOptions{
-						ID:       &icdId,
+						ID:       &instanceID,
 						UserType: core.StringPtr(newEntry["user_type"].(string)),
 						Username: core.StringPtr(newEntry["name"].(string)),
 						User:     passwordSettingUser,
@@ -1792,14 +1792,14 @@ func resourceIBMDatabaseInstanceUpdate(d *schema.ResourceData, meta interface{})
 					_, err = waitForDatabaseTaskComplete(taskID, d, meta, d.Timeout(schema.TimeoutUpdate))
 					if err != nil {
 						return fmt.Errorf(
-							"[ERROR] Error waiting for database (%s) user (%s) password update task to complete: %s", icdId, newEntry["name"].(string), err)
+							"[ERROR] Error waiting for database (%s) user (%s) password update task to complete: %s", instanceID, newEntry["name"].(string), err)
 					}
 				} else {
 					taskID := *createDatabaseUserResponse.Task.ID
 					_, err = waitForDatabaseTaskComplete(taskID, d, meta, d.Timeout(schema.TimeoutUpdate))
 					if err != nil {
 						return fmt.Errorf(
-							"[ERROR] Error waiting for database (%s) user (%s) create task to complete: %s", icdId, newEntry["name"].(string), err)
+							"[ERROR] Error waiting for database (%s) user (%s) create task to complete: %s", instanceID, newEntry["name"].(string), err)
 					}
 				}
 			}
@@ -1809,7 +1809,7 @@ func resourceIBMDatabaseInstanceUpdate(d *schema.ResourceData, meta interface{})
 			for _, entry := range remove {
 				newEntry := entry.(map[string]interface{})
 				deleteDatabaseUserOptions := &clouddatabasesv5.DeleteDatabaseUserOptions{
-					ID:       &icdId,
+					ID:       &instanceID,
 					UserType: core.StringPtr(newEntry["user_type"].(string)),
 					Username: core.StringPtr(newEntry["name"].(string)),
 				}
