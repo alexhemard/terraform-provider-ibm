@@ -8,9 +8,9 @@ description: |-
 
 # ibm_database
 
-Create, update, or delete a IBM Cloud Database (ICD) instance. The `ibmcloud_api_key` that are used by  Terraform should grant IAM rights to create and modify IBM Cloud Databases and have access to the resource group the ICD instance is associated with. For more information, see [documentation](https://cloud.ibm.com/docs/services/databases-for-postgresql/reference-access-management.html#identity-and-access-management) to manage ICD instances.  
+Create, update, or delete a IBM Cloud Database (ICD) instance. The `ibmcloud_api_key` that are used by  Terraform should grant IAM rights to create and modify IBM Cloud Databases and have access to the resource group the ICD instance is associated with. For more information, see [documentation](https://cloud.ibm.com/docs/services/databases-for-postgresql/reference-access-management.html#identity-and-access-management) to manage ICD instances.
 
-If `resource_group_id` is not specified, the ICD instance is created in the default resource group. The `API_KEY` must be assigned permissions for this group.  
+If `resource_group_id` is not specified, the ICD instance is created in the default resource group. The `API_KEY` must be assigned permissions for this group.
 
 Configuration of an ICD resource requires that the `region` parameter is set for the IBM provider in the `provider.tf` to be the same as the target ICD `location/region`. If not specified it default to `us-south`. A `terraform apply`  fails if the ICD `location` is set differently. If the Terraform configuration needs to deploy resources into multiple regions, provider alias can be used. For more information, see [Terraform provider configuration](https://www.terraform.io/docs/configuration/providers.html#multiple-provider-instances).
 
@@ -35,8 +35,9 @@ resource "ibm_database" "<your_database>" {
   members_memory_allocation_mb = 3072
   members_disk_allocation_mb   = 61440
   users {
-    name     = "user123"
-    password = "password12"
+    name      = "user123"
+    password  = "password12"
+    user_type = "database"
   }
   whitelist {
     address     = "172.168.1.1/32"
@@ -71,8 +72,9 @@ resource "ibm_database" "<your_database>" {
   node_memory_allocation_mb = 1024
   node_disk_allocation_mb   = 20480
   users {
-    name     = "user123"
-    password = "password12"
+    name      = "user123"
+    password  = "password12"
+    user_type = "database"
   }
   whitelist {
     address     = "172.168.1.1/32"
@@ -165,8 +167,9 @@ resource "ibm_database" "cassandra" {
   members_memory_allocation_mb = 36864
   members_disk_allocation_mb   = 61440
   users {
-    name     = "user123"
-    password = "password12"
+    name      = "user123"
+    password  = "password12"
+    user_type = "database"
   }
   whitelist {
     address     = "172.168.1.2/32"
@@ -201,8 +204,9 @@ resource "ibm_database" "mongodb" {
   members_memory_allocation_mb = 43008
   tags                         = ["one:two"]
   users {
-    name     = "user123"
-    password = "password12"
+    name      = "user123"
+    password  = "password12"
+    user_type = "database"
   }
   whitelist {
     address     = "172.168.1.2/32"
@@ -234,8 +238,9 @@ resource "ibm_database" "edb" {
   members_disk_allocation_mb   = 61440
   tags                         = ["one:two"]
   users {
-    name     = "user123"
-    password = "password12"
+    name      = "user123"
+    password  = "password12"
+    user_type = "database"
   }
   whitelist {
     address     = "172.168.1.2/32"
@@ -268,7 +273,7 @@ resource "ibm_database" "db" {
     "max_connections": 400
   }
   CONFIGURATION
-} 
+}
 
 ```
 
@@ -287,7 +292,7 @@ For more information, about an example that are related to a VSI configuration t
 
 
 ## Timeouts
-The following timeouts are defined for this resource. 
+The following timeouts are defined for this resource.
 
 * `Create` The creation of an instance is considered failed when no response is received for 60 minutes.
 * `Update` The update of an instance is considered failed when no response is received for 20 minutes.
@@ -297,21 +302,21 @@ ICD create instance typically takes between 30 minutes to 45 minutes. Delete and
 
 
 ## Argument reference
-Review the argument reference that you can specify for your resource. 
+Review the argument reference that you can specify for your resource.
 
 - `adminpassword` - (Optional, String)  The password for the database administrator. If not specified, an empty string is provided for the password and the user ID cannot be used. In this case, more users must be specified in a `user` block.
 - `auto_scaling` (List , Optional) Configure rules to allow your database to automatically increase its resources. Single block of autoscaling is allowed at once.
-  
+
   Nested scheme for `auto_scaling`:
   - `cpu` (List , Optional) Single block of CPU is allowed at once by CPU autoscaling.
-    
+
     Nested scheme for `cpu`:
     - `rate_increase_percent` - (Optional, Integer) Auto scaling rate in increase percent.
     - `rate_limit_count_per_member` - (Optional, Integer) Auto scaling rate limit in count per number.
     - `rate_period_seconds` - (Optional, Integer) Period seconds of the auto scaling rate.
     - `rate_units` - (Optional, String) Auto scaling rate in units.
   - `disk` (List , Optional) Single block of disk is allowed at once in disk auto scaling.
-  
+
     Nested scheme for `disk`:
     - `capacity_enabled` - (Optional, Bool) Auto scaling scalar enables or disables the scalar capacity.
     - `free_space_less_than_percent` - (Optional, Integer) Auto scaling scalar capacity free space less than percent.
@@ -322,7 +327,7 @@ Review the argument reference that you can specify for your resource.
     - `rate_period_seconds` - (Optional, Integer) Auto scaling rate period in seconds.
     - `rate_units` - (Optional, String) Auto scaling rate in units.
   - `memory` (List , Optional) Memory Auto Scaling in single block of memory is allowed at once.
-	  
+
     Nested scheme for `memory`:
     - `io_above_percent` - (Optional, Integer) Auto scaling scalar I/O utilization above percent.
     - `io_enabled`-Bool-Optional-Auto scaling scalar I/O utilization enabled.
@@ -361,17 +366,19 @@ Review the argument reference that you can specify for your resource.
 - `users` - (Optional, List of Objects) A list of users that you want to create on the database. Multiple blocks are allowed.
 
   Nested scheme for `users`:
-  - `name` - (Optional, String) The user ID to add to the database instance. The user ID must be in the range 5 - 32 characters.
-  - `password` - (Optional, String) The password for the user ID. The password must be in the range 10 - 32 characters.
+  - `name` - (Optional, String) The user name to add to the database instance. The user name must be in the range 5 - 32 characters.
+  - `password` - (Optional, String) The password for the user. The password must be in the range 10 - 32 characters.
+  - `user_type` - (Required, String) The user_type for the user. Examples: database, ops_manager, read_only_replica
+
 - `whitelist` - (Optional, List of Objects) A list of allowed IP addresses for the database. Multiple blocks are allowed.
-  
+
   Nested scheme for `whitelist`:
   - `address` - (Optional, String) The IP address or range of database client addresses to be whitelisted in CIDR format. Example, `172.168.1.2/32`.
   - `description` - (Optional, String) A description for the allowed IP addresses range.
 
 
 ## Attribute reference
-In addition to all argument references list, you can access the following attribute references after your resource is created. 
+In addition to all argument references list, you can access the following attribute references after your resource is created.
 
 - `adminuser` - (String) The user ID of the database administrator. Example, `admin` or `root`.
 - `configuration_schema` (String) Database Configuration Schema in JSON format.
