@@ -1735,6 +1735,12 @@ func resourceIBMDatabaseInstanceUpdate(d *schema.ResourceData, meta interface{})
 	}
 
 	if d.HasChange("users") {
+		cloudDatabasesV5, err := meta.(ClientSession).CloudDatabasesAPI()
+
+		if err != nil {
+			return fmt.Errorf("[ERROR] Error getting database client settings: %s", err)
+		}
+
 		oldList, newList := d.GetChange("users")
 		if oldList == nil {
 			oldList = new(schema.Set)
@@ -1750,58 +1756,73 @@ func resourceIBMDatabaseInstanceUpdate(d *schema.ResourceData, meta interface{})
 		if len(add) > 0 {
 			for _, entry := range add {
 				newEntry := entry.(map[string]interface{})
-				userEntry := icdv4.User{
-					UserName: newEntry["name"].(string),
-					Password: newEntry["password"].(string),
+				userEntry := &clouddatabasesv5.CreateDatabaseUserRequestUser{
+					Username: core.StringPtr(newEntry["name"].(string)),
+					Password: core.StringPtr(newEntry["password"].(string)),
 				}
-				userReq := icdv4.UserReq{
-					User: userEntry,
+
+				createDatabaseUserOptions := &clouddatabasesv5.CreateDatabaseUserOptions{
+					ID:       &icdId,
+					UserType: core.StringPtr(newEntry["user_type"].(string)),
+					User:     userEntry,
 				}
-				task, err := icdClient.Users().CreateUser(icdId, userReq)
+
+				createDatabaseUserResponse, _, err := cloudDatabasesV5.CreateDatabaseUser(createDatabaseUserOptions)
+
 				if err != nil {
 					// ICD does not report if error was due to user already being defined. Check if can
 					// successfully update password by itself.
-					userParams := icdv4.UserReq{
-						User: icdv4.User{
-							Password: newEntry["password"].(string),
-						},
+					passwordSettingUser := &clouddatabasesv5.APasswordSettingUser{
+						Password: core.StringPtr(newEntry["password"].(string)),
 					}
-					task, err := icdClient.Users().UpdateUser(icdId, newEntry["name"].(string), userParams)
+
+					changeUserPasswordOptions := &clouddatabasesv5.ChangeUserPasswordOptions{
+						ID:       &icdId,
+						UserType: core.StringPtr(newEntry["user_type"].(string)),
+						Username: core.StringPtr(newEntry["name"].(string)),
+						User:     passwordSettingUser,
+					}
+
+					changeUserPasswordResponse, _, err := cloudDatabasesV5.ChangeUserPassword(changeUserPasswordOptions)
 					if err != nil {
 						return fmt.Errorf("[ERROR] Error updating database user (%s) password: %s", newEntry["name"].(string), err)
 					}
-					_, err = waitForDatabaseTaskComplete(task.Id, d, meta, d.Timeout(schema.TimeoutUpdate))
+
+					taskID := *changeUserPasswordResponse.Task.ID
+					_, err = waitForDatabaseTaskComplete(taskID, d, meta, d.Timeout(schema.TimeoutUpdate))
 					if err != nil {
 						return fmt.Errorf(
 							"[ERROR] Error waiting for database (%s) user (%s) password update task to complete: %s", icdId, newEntry["name"].(string), err)
 					}
 				} else {
-					_, err = waitForDatabaseTaskComplete(task.Id, d, meta, d.Timeout(schema.TimeoutUpdate))
+					taskID := *createDatabaseUserResponse.Task.ID
+					_, err = waitForDatabaseTaskComplete(taskID, d, meta, d.Timeout(schema.TimeoutUpdate))
 					if err != nil {
 						return fmt.Errorf(
 							"[ERROR] Error waiting for database (%s) user (%s) create task to complete: %s", icdId, newEntry["name"].(string), err)
 					}
 				}
 			}
-
 		}
 
 		if len(remove) > 0 {
 			for _, entry := range remove {
 				newEntry := entry.(map[string]interface{})
-				userEntry := icdv4.User{
-					UserName: newEntry["name"].(string),
-					Password: newEntry["password"].(string),
+				deleteDatabaseUserOptions := &clouddatabasesv5.DeleteDatabaseUserOptions{
+					ID:       &icdId,
+					UserType: core.StringPtr(newEntry["user_type"].(string)),
+					Username: core.StringPtr(newEntry["name"].(string)),
 				}
-				user := userEntry.UserName
-				task, err := icdClient.Users().DeleteUser(icdId, user)
+
+				deleteDatabaseUserResponse, _, err := cloudDatabasesV5.DeleteDatabaseUser(deleteDatabaseUserOptions)
 				if err != nil {
-					return fmt.Errorf("[ERROR] Error deleting database user (%s) entry: %s", user, err)
+					return fmt.Errorf("[ERROR] Error deleting database user (%s) entry: %s", *deleteDatabaseUserOptions.Username, err)
 				}
-				_, err = waitForDatabaseTaskComplete(task.Id, d, meta, d.Timeout(schema.TimeoutUpdate))
+				taskID := *deleteDatabaseUserResponse.Task.ID
+				_, err = waitForDatabaseTaskComplete(taskID, d, meta, d.Timeout(schema.TimeoutUpdate))
 				if err != nil {
 					return fmt.Errorf(
-						"[ERROR] Error waiting for database (%s) user (%s) delete task to complete: %s", icdId, user, err)
+						"[ERROR] Error waiting for database (%s) user (%s) delete task to complete: %s", icdId, *deleteDatabaseUserOptions.Username, err)
 				}
 			}
 		}
