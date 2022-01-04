@@ -5,7 +5,7 @@ package ibm
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	// "encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -13,10 +13,10 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 
-	"github.com/IBM-Cloud/bluemix-go/api/icd/icdv4"
 	"github.com/IBM-Cloud/bluemix-go/api/resource/resourcev2/controllerv2"
-	"github.com/IBM-Cloud/bluemix-go/bmxerror"
 	"github.com/IBM-Cloud/bluemix-go/models"
+	"github.com/IBM/cloud-databases-go-sdk/clouddatabasesv5"
+	"github.com/IBM/go-sdk-core/v5/core"
 )
 
 func dataSourceIBMDatabaseInstance() *schema.Resource {
@@ -665,49 +665,79 @@ func dataSourceIBMDatabaseInstanceRead(d *schema.ResourceData, meta interface{})
 	}
 	d.Set(ResourceControllerURL, rcontroller+"/services/"+url.QueryEscape(instance.Crn.String()))
 
-	icdClient, err := meta.(ClientSession).ICDAPI()
+	cloudDatabasesV5, err := meta.(ClientSession).CloudDatabasesAPI()
 	if err != nil {
-		return fmt.Errorf("Error getting database client settings: %s", err)
+		return fmt.Errorf("[ERROR] Error getting database client settings: %s", err)
 	}
 
-	icdId := EscapeUrlParm(instance.ID)
-	cdb, err := icdClient.Cdbs().GetCdb(icdId)
+	instanceId := instance.ID
+
+	getDeploymentInfoOptions := cloudDatabasesV5.NewGetDeploymentInfoOptions(
+		instanceId,
+	)
+
+	deploymentInfoRepsonse, response, err := cloudDatabasesV5.GetDeploymentInfo(getDeploymentInfoOptions)
+
 	if err != nil {
-		if apiErr, ok := err.(bmxerror.RequestFailure); ok && apiErr.StatusCode() == 404 {
-			return fmt.Errorf("The database instance was not found in the region set for the Provider, or the default of us-south. Specify the correct region in the provider definition, or create a provider alias for the correct region. %v", err)
+		if response.StatusCode == 404 {
+			return fmt.Errorf("[ERROR] The database instance was not found in the region set for the Provider, or the default of us-south. Specify the correct region in the provider definition, or create a provider alias for the correct region. %v", err)
 		}
-		return fmt.Errorf("Error getting database config for: %s with error %s\n", icdId, err)
+		return fmt.Errorf("[ERROR] Error getting database config for: %s: with error %s", instanceId, err)
 	}
-	d.Set("adminuser", cdb.AdminUser)
-	d.Set("version", cdb.Version)
-	if &cdb.PlatformOptions != nil {
-		platformOptions := map[string]interface{}{
-			"key_protect_key_id":        cdb.PlatformOptions.KeyProtectKey,
-			"disk_encryption_key_crn":   cdb.PlatformOptions.DiskENcryptionKeyCrn,
-			"backup_encryption_key_crn": cdb.PlatformOptions.BackUpEncryptionKeyCrn,
+
+	deployment := deploymentInfoRepsonse.Deployment
+	adminUsername := deployment.AdminUsernames["database"]
+
+	d.Set("adminuser", adminUsername)
+	d.Set("version", deployment.Version)
+
+	platformOptions := deployment.PlatformOptions.(map[string]string)
+
+	if &deployment.PlatformOptions != nil {
+		options := map[string]interface{}{
+			"key_protect_key_id":        platformOptions["key_protect_key_id"],
+			"disk_encryption_key_crn":   platformOptions["disk_encryption_key_crn"],
+			"backup_encryption_key_crn": platformOptions["backup_encryption_key_crn"],
 		}
-		d.Set("platform_options", platformOptions)
+		d.Set("platform_options", options)
 	}
 
-	groupList, err := icdClient.Groups().GetGroups(icdId)
-	if err != nil {
-		return fmt.Errorf("Error getting database groups: %s", err)
-	}
-	d.Set("groups", flattenIcdGroups(groupList))
-	d.Set("members_memory_allocation_mb", groupList.Groups[0].Memory.AllocationMb)
-	d.Set("members_disk_allocation_mb", groupList.Groups[0].Disk.AllocationMb)
+	listDeploymentScalingGroupsOptions := cloudDatabasesV5.NewListDeploymentScalingGroupsOptions(
+		instanceId,
+	)
 
-	autoSclaingGroup, err := icdClient.AutoScaling().GetAutoScaling(icdId, "member")
+	listDeploymentScalingGroupResponse, response, err := cloudDatabasesV5.ListDeploymentScalingGroups(listDeploymentScalingGroupsOptions)
 	if err != nil {
-		return fmt.Errorf("Error getting database groups: %s", err)
+		return fmt.Errorf("[ERROR] Error getting database groups: %s", err)
 	}
-	d.Set("auto_scaling", flattenICDAutoScalingGroup(autoSclaingGroup))
+	groups := listDeploymentScalingGroupResponse
 
-	whitelist, err := icdClient.Whitelists().GetWhitelist(icdId)
-	if err != nil {
-		return fmt.Errorf("Error getting database whitelist: %s", err)
+	d.Set("groups", flattenIcdGroups(*groups))
+	d.Set("node_count", groups.Groups[0].Members.AllocationCount)
+
+	d.Set("members_memory_allocation_mb", groups.Groups[0].Memory.AllocationMb)
+	d.Set("members_disk_allocation_mb", groups.Groups[0].Disk.AllocationMb)
+
+	getAutoscalingConditionsOptions := &clouddatabasesv5.GetAutoscalingConditionsOptions{
+		ID:      &instanceId,
+		GroupID: core.StringPtr("member"),
 	}
-	d.Set("whitelist", flattenWhitelist(whitelist))
+
+	autoscalingGroup, _, err := cloudDatabasesV5.GetAutoscalingConditions(getAutoscalingConditionsOptions)
+	if err != nil {
+		return fmt.Errorf("[ERROR] Error getting database autoscaling groups: %s", err)
+	}
+	d.Set("auto_scaling", flattenICDAutoScalingGroup(*autoscalingGroup))
+
+	getAllowlistOptions := &clouddatabasesv5.GetAllowlistOptions{
+		ID: &instanceId,
+	}
+
+	allowlistResponse, _, err := cloudDatabasesV5.GetAllowlist(getAllowlistOptions)
+	if err != nil {
+		return fmt.Errorf("[ERROR] Error getting database allowlist: %s", err)
+	}
+	d.Set("allowlist", flattenAllowlist(*allowlistResponse))
 
 	connectionEndpoint := "public"
 	if instance.Parameters != nil {
@@ -716,33 +746,34 @@ func dataSourceIBMDatabaseInstanceRead(d *schema.ResourceData, meta interface{})
 				connectionEndpoint = "private"
 			}
 		}
-
 	}
 
-	var connectionStrings []CsEntry
+	var connectionStrings []ConnectionString
 	//ICD does not implement a GetUsers API. Users populated from tf configuration.
 	tfusers := d.Get("users").(*schema.Set)
 	users := expandUsers(tfusers)
-	user := icdv4.User{
-		UserName: cdb.AdminUser,
+	user := clouddatabasesv5.CreateDatabaseUserRequestUser{
+		Username: &adminUsername,
+		UserType: core.StringPtr("database"),
 	}
 	users = append(users, user)
 	for _, user := range users {
-		userName := user.UserName
-		csEntry, err := getConnectionString(d, userName, connectionEndpoint, meta)
+		userName := user.Username
+		userType := user.UserType
+		csEntry, err := getConnectionString(d, *userName, *userType, connectionEndpoint, meta)
 		if err != nil {
-			return fmt.Errorf("Error getting user connection string for user (%s): %s", userName, err)
+			return fmt.Errorf("Error getting user connection string for user (%s): %s", *userName, err)
 		}
 		connectionStrings = append(connectionStrings, csEntry)
 	}
 	d.Set("connectionstrings", flattenConnectionStrings(connectionStrings))
 
 	connStr := connectionStrings[0]
-	certFile, err := filepath.Abs(connStr.CertName + ".pem")
+	certFile, err := filepath.Abs(connStr.Certificate.Name + ".pem")
 	if err != nil {
 		return fmt.Errorf("Error generating certificate file path: %s", err)
 	}
-	content, err := base64.StdEncoding.DecodeString(connStr.CertBase64)
+	content, err := base64.StdEncoding.DecodeString(connStr.Certificate.CertificateBase64)
 	if err != nil {
 		return fmt.Errorf("Error decoding certificate content: %s", err)
 	}
@@ -750,20 +781,21 @@ func dataSourceIBMDatabaseInstanceRead(d *schema.ResourceData, meta interface{})
 		return fmt.Errorf("Error writing certificate to file: %s", err)
 	}
 	d.Set("cert_file_path", certFile)
-	if serviceOff == "databases-for-postgresql" || serviceOff == "databases-for-redis" || serviceOff == "databases-for-enterprisedb" {
-		configSchema, err := icdClient.Configurations().GetConfiguration(icdId)
-		if err != nil {
-			return fmt.Errorf("[ERROR] Error getting database (%s) configuration schema : %s", icdId, err)
-		}
-		s, err := json.Marshal(configSchema)
-		if err != nil {
-			return fmt.Errorf("error marshalling the database configuration schema: %s", err)
-		}
 
-		if err = d.Set("configuration_schema", string(s)); err != nil {
-			return fmt.Errorf("error setting the database configuration schema: %s", err)
-		}
-	}
+	// if serviceOff == "databases-for-postgresql" || serviceOff == "databases-for-redis" || serviceOff == "databases-for-enterprisedb" {
+	// 	configSchema, err := icdClient.Configurations().GetConfiguration(icdId)
+	// 	if err != nil {
+	// 		return fmt.Errorf("[ERROR] Error getting database (%s) configuration schema : %s", icdId, err)
+	// 	}
+	// 	s, err := json.Marshal(configSchema)
+	// 	if err != nil {
+	// 		return fmt.Errorf("error marshalling the database configuration schema: %s", err)
+	// 	}
+
+	// 	if err = d.Set("configuration_schema", string(s)); err != nil {
+	// 		return fmt.Errorf("error setting the database configuration schema: %s", err)
+	// 	}
+	// }
 
 	return nil
 }

@@ -34,10 +34,10 @@ import (
 
 	"github.com/IBM-Cloud/bluemix-go/api/container/containerv1"
 	"github.com/IBM-Cloud/bluemix-go/api/container/containerv2"
-	"github.com/IBM-Cloud/bluemix-go/api/icd/icdv4"
 	"github.com/IBM-Cloud/bluemix-go/api/mccp/mccpv2"
 	"github.com/IBM-Cloud/bluemix-go/api/schematics"
 	"github.com/IBM-Cloud/bluemix-go/api/usermanagement/usermanagementv2"
+	"github.com/IBM/cloud-databases-go-sdk/clouddatabasesv5"
 	"github.com/IBM/platform-services-go-sdk/iamaccessgroupsv2"
 	"github.com/IBM/platform-services-go-sdk/iamidentityv1"
 )
@@ -537,9 +537,9 @@ func flattenVlans(list []containerv1.Vlan) []map[string]interface{} {
 	return vlans
 }
 
-func flattenIcdGroups(grouplist icdv4.GroupList) []map[string]interface{} {
-	groups := make([]map[string]interface{}, len(grouplist.Groups))
-	for i, group := range grouplist.Groups {
+func flattenIcdGroups(groupList clouddatabasesv5.Groups) []map[string]interface{} {
+	groups := make([]map[string]interface{}, len(groupList.Groups))
+	for i, group := range groupList.Groups {
 		memorys := make([]map[string]interface{}, 1)
 		memory := make(map[string]interface{})
 		memory["units"] = group.Memory.Units
@@ -552,12 +552,12 @@ func flattenIcdGroups(grouplist icdv4.GroupList) []map[string]interface{} {
 
 		cpus := make([]map[string]interface{}, 1)
 		cpu := make(map[string]interface{})
-		cpu["units"] = group.Cpu.Units
-		cpu["allocation_count"] = group.Cpu.AllocationCount
-		cpu["minimum_count"] = group.Cpu.MinimumCount
-		cpu["step_size_count"] = group.Cpu.StepSizeCount
-		cpu["is_adjustable"] = group.Cpu.IsAdjustable
-		cpu["can_scale_down"] = group.Cpu.CanScaleDown
+		cpu["units"] = group.CPU.Units
+		cpu["allocation_count"] = group.CPU.AllocationCount
+		cpu["minimum_count"] = group.CPU.MinimumCount
+		cpu["step_size_count"] = group.CPU.StepSizeCount
+		cpu["is_adjustable"] = group.CPU.IsAdjustable
+		cpu["can_scale_down"] = group.CPU.CanScaleDown
 		cpus[0] = cpu
 
 		disks := make([]map[string]interface{}, 1)
@@ -571,7 +571,7 @@ func flattenIcdGroups(grouplist icdv4.GroupList) []map[string]interface{} {
 		disks[0] = disk
 
 		l := map[string]interface{}{
-			"group_id": group.Id,
+			"group_id": group.ID,
 			"count":    group.Count,
 			"memory":   memorys,
 			"cpu":      cpus,
@@ -1444,12 +1444,13 @@ func flattenServiceIds(services []string, meta interface{}) ([]string, error) {
 	return serviceids, nil
 }
 
-func expandUsers(userList *schema.Set) (users []icdv4.User) {
+func expandUsers(userList *schema.Set) (users []clouddatabasesv5.CreateDatabaseUserRequestUser) {
 	for _, iface := range userList.List() {
 		userEl := iface.(map[string]interface{})
-		user := icdv4.User{
-			UserName: userEl["name"].(string),
-			Password: userEl["password"].(string),
+		user := clouddatabasesv5.CreateDatabaseUserRequestUser{
+			Username: core.StringPtr(userEl["name"].(string)),
+			Password: core.StringPtr(userEl["password"].(string)),
+			UserType: core.StringPtr(userEl["user_type"].(string)),
 		}
 		users = append(users, user)
 	}
@@ -1457,15 +1458,15 @@ func expandUsers(userList *schema.Set) (users []icdv4.User) {
 }
 
 // IBM Cloud Databases
-func flattenConnectionStrings(cs []CsEntry) []map[string]interface{} {
+func flattenConnectionStrings(cs []ConnectionString) []map[string]interface{} {
 	entries := make([]map[string]interface{}, len(cs), len(cs))
 	for i, csEntry := range cs {
 		l := map[string]interface{}{
 			"name":         csEntry.Name,
 			"password":     csEntry.Password,
-			"composed":     csEntry.Composed,
-			"certname":     csEntry.CertName,
-			"certbase64":   csEntry.CertBase64,
+			"composed":     csEntry.Composed[0],
+			"certname":     csEntry.Certificate.Name,
+			"certbase64":   csEntry.Certificate.CertificateBase64,
 			"queryoptions": csEntry.QueryOptions,
 			"scheme":       csEntry.Scheme,
 			"path":         csEntry.Path,
@@ -1552,26 +1553,25 @@ func flattenremoteSubnet(vpn *datatypes.Network_Tunnel_Module_Context) []map[str
 	return remoteSubnetMap
 }
 
-// IBM Cloud Databases
-func expandWhitelist(whiteList *schema.Set) (whitelist []icdv4.WhitelistEntry) {
-	for _, iface := range whiteList.List() {
-		wlItem := iface.(map[string]interface{})
-		wlEntry := icdv4.WhitelistEntry{
-			Address:     wlItem["address"].(string),
-			Description: wlItem["description"].(string),
+// Cloud Internet Services
+func expandAllowlist(allowList *schema.Set) (allowlist []clouddatabasesv5.AllowlistEntry) {
+	for _, iface := range allowList.List() {
+		alItem := iface.(map[string]interface{})
+		alEntry := clouddatabasesv5.AllowlistEntry{
+			Address:     core.StringPtr(alItem["address"].(string)),
+			Description: core.StringPtr(alItem["description"].(string)),
 		}
-		whitelist = append(whitelist, wlEntry)
+		allowlist = append(allowlist, alEntry)
 	}
 	return
 }
 
-// Cloud Internet Services
-func flattenWhitelist(whitelist icdv4.Whitelist) []map[string]interface{} {
-	entries := make([]map[string]interface{}, len(whitelist.WhitelistEntrys), len(whitelist.WhitelistEntrys))
-	for i, whitelistEntry := range whitelist.WhitelistEntrys {
+func flattenAllowlist(allowlist clouddatabasesv5.Allowlist) []map[string]interface{} {
+	entries := make([]map[string]interface{}, len(allowlist.IPAddresses), len(allowlist.IPAddresses))
+	for i, allowlistEntry := range allowlist.IPAddresses {
 		l := map[string]interface{}{
-			"address":     whitelistEntry.Address,
-			"description": whitelistEntry.Description,
+			"address":     allowlistEntry.Address,
+			"description": allowlistEntry.Description,
 		}
 		entries[i] = l
 	}
